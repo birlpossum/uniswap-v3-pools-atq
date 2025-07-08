@@ -12,13 +12,13 @@ interface PoolToken {
 
 interface Pool {
   id: string;
-  createdAtTimestamp: number;
-  token0: PoolToken;
-  token1: PoolToken;
+  createdTimestamp: string;
+  name: string;
+  inputTokens: PoolToken[];
 }
 
 interface GraphQLData {
-  pools: Pool[];
+  liquidityPools: Pool[];
 }
 
 interface GraphQLResponse {
@@ -32,24 +32,19 @@ const headers: Record<string, string> = {
 };
 
 const GET_POOLS_QUERY = `
-query GetPools($lastTimestamp: Int) {
-  pools(
-    first: 1000,
-    orderBy: createdAtTimestamp,
-    orderDirection: asc,
-    where: { createdAtTimestamp_gt: $lastTimestamp }
+query GetPools($lastTimestamp: BigInt) {
+  liquidityPools(
+    first: 1000
+    orderBy: createdTimestamp
+    orderDirection: asc
+    where: { createdTimestamp_gt: $lastTimestamp }
   ) {
     id
-    createdAtTimestamp
-    token0 {
-      id
-      name
+    createdTimestamp
+    name
+    inputTokens {
       symbol
-    }
-    token1 {
-      id
       name
-      symbol
     }
   }
 }
@@ -73,7 +68,7 @@ function containsHtmlOrMarkdown(text: string): boolean {
   return false;
 }
 
-async function fetchData(subgraphUrl: string, lastTimestamp: number): Promise<Pool[]> {
+async function fetchData(subgraphUrl: string, lastTimestamp: bigint): Promise<Pool[]> {
   const response = await fetch(subgraphUrl, {
     method: "POST",
     headers,
@@ -95,23 +90,25 @@ async function fetchData(subgraphUrl: string, lastTimestamp: number): Promise<Po
     throw new Error("GraphQL errors occurred: see logs for details.");
   }
 
-  if (!result.data || !result.data.pools) {
+  if (!result.data || !result.data.liquidityPools) {
     throw new Error("No pools data found.");
   }
 
-  return result.data.pools;
+  return result.data.liquidityPools;
 }
 
 function transformPoolsToTags(chainId: string, pools: Pool[]): ContractTag[] {
   return pools.map((pool) => {
-    const symbolsText = `${pool.token0.symbol}/${pool.token1.symbol}`;
+    const symbols = pool.inputTokens.map((t) => t.symbol).sort();
+    const publicNameTag = pool.name;
+    const publicNote = `A Uniswap V3 pool with tokens ${symbols.join(", ")}.`;
 
     return {
       "Contract Address": `eip155:${chainId}:${pool.id}`,
-      "Public Name Tag": `${symbolsText} Pool`,
+      "Public Name Tag": publicNameTag,
       "Project Name": "Uniswap v3",
       "UI/Website Link": `https://info.uniswap.org/#/arbitrum/pools/${pool.id}`,
-      "Public Note": `A Uniswap v3 pool with the tokens: ${pool.token0.name} (symbol: ${pool.token0.symbol}) and ${pool.token1.name} (symbol: ${pool.token1.symbol}).`,
+      "Public Note": publicNote,
     };
   });
 }
@@ -124,7 +121,7 @@ class TagService implements ITagService {
 
     const subgraphUrl = SUBGRAPH_URL_TEMPLATE.replace("[api-key]", apiKey);
 
-    let lastTimestamp: number = 0;
+    let lastTimestamp: bigint = BigInt(0);
     let allTags: ContractTag[] = [];
     let isMore = true;
 
@@ -135,10 +132,7 @@ class TagService implements ITagService {
 
         isMore = pools.length === 1000;
         if (isMore) {
-          lastTimestamp = parseInt(
-            pools[pools.length - 1].createdAtTimestamp.toString(),
-            10
-          );
+          lastTimestamp = BigInt(pools[pools.length - 1].createdTimestamp);
         }
       } catch (error) {
         if (isError(error)) {
