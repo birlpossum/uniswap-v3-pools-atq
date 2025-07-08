@@ -2,7 +2,7 @@ import fetch from "node-fetch";
 import { ContractTag, ITagService } from "atq-types";
 
 // Uniswap V3 Subgraph for Arbitrum One, using the decentralized gateway.
-const SUBGRAPH_URL_TEMPLATE = "https://gateway-arbitrum.network.thegraph.com/api/[api-key]/deployments/id/QmQc23tY3k3nJm2r52b1ER1p5zK2g2QDN4922n1s22i1d4";
+const SUBGRAPH_URL_TEMPLATE = `https://gateway-arbitrum.network.thegraph.com/api/[api-key]/subgraphs/id/FQ6JYszEKApsBpAmiHesRsd9Ygc6mzmpNRANeVQFYoVX`;
 
 interface PoolToken {
   id: string;
