@@ -2,10 +2,10 @@ import fetch from "node-fetch";
 import { ContractTag, ITagService } from "atq-types";
 
 const SUBGRAPH_URLS: Record<string, { decentralized: string }> = {
-  // Ethereum Mainnet
-  "1": {
+  // Arbitrum One
+  "42161": {
     decentralized:
-      "https://gateway-arbitrum.network.thegraph.com/api/[api-key]/deployments/id/QmZeCuoZeadgHkGwLwMeguyqUKz1WPWQYKcKyMCeQqGhsF", // Ethereum deployment, by Uniswap team
+      "https://gateway.thegraph.com/api/[api-key]/subgraphs/id/HyW7A86UEdYVt5b9Lrw8W2F98yKecerHKutZTRbSCX27",
   },
   "137": {
     decentralized:
