@@ -5,7 +5,7 @@ const SUBGRAPH_URLS: Record<string, { decentralized: string }> = {
   // Arbitrum One
   "42161": {
     decentralized:
-      "https://gateway.thegraph.com/api/[api-key]/subgraphs/id/HyW7A86UEdYVt5b9Lrw8W2F98yKecerHKutZTRbSCX27",
+      "https://gateway-arbitrum.network.thegraph.com/api/[api-key]/subgraphs/id/FQ6JYszEKApsBpAmiHesRsd9Ygc6mzmpNRANeVQFYoVX",
   },
   "137": {
     decentralized:
@@ -20,6 +20,10 @@ const SUBGRAPH_URLS: Record<string, { decentralized: string }> = {
       "https://gateway-arbitrum.network.thegraph.com/api/[api-key]/deployments/id/QmXfJmxY7C4A4UoWEexvei8XzcSxMegr78rt3Rzz8szkZA",
   }, // Celo deployment, same as the latest deployment ID as of 8-5-2024 on https://thegraph.com/hosted-service/subgraph/jesse-sawa/uniswap-celo, which is used on info.uniswap.org
 };
+=======
+// Uniswap V3 Subgraph for Arbitrum One, using the decentralized gateway.
+const SUBGRAPH_URL_TEMPLATE = `https://gateway-arbitrum.network.thegraph.com/api/[api-key]/subgraphs/id/FQ6JYszEKApsBpAmiHesRsd9Ygc6mzmpNRANeVQFYoVX`;
+>>>>>>> 6589e7b02c9572a7662525e7ee1afc50f98ede3c
 
 interface PoolToken {
   id: string;
@@ -29,44 +33,39 @@ interface PoolToken {
 
 interface Pool {
   id: string;
-  createdAtTimestamp: number;
-  token0: PoolToken;
-  token1: PoolToken;
+  createdTimestamp: string;
+  name: string;
+  inputTokens: PoolToken[];
 }
 
 interface GraphQLData {
-  pools: Pool[];
+  liquidityPools: Pool[];
 }
 
 interface GraphQLResponse {
   data?: GraphQLData;
-  errors?: { message: string }[]; // Assuming the API might return errors in this format
+  errors?: { message: string }[];
 }
-//defining headers for query
+
 const headers: Record<string, string> = {
   "Content-Type": "application/json",
   Accept: "application/json",
 };
 
 const GET_POOLS_QUERY = `
-query GetPools($lastTimestamp: Int) {
-  pools(
-    first: 1000,
-    orderBy: createdAtTimestamp,
-    orderDirection: asc,
-    where: { createdAtTimestamp_gt: $lastTimestamp }
+query GetPools($lastTimestamp: BigInt) {
+  liquidityPools(
+    first: 1000
+    orderBy: createdTimestamp
+    orderDirection: asc
+    where: { createdTimestamp_gt: $lastTimestamp }
   ) {
     id
-    createdAtTimestamp
-    token0 {
-      id
-      name
+    createdTimestamp
+    name
+    inputTokens {
       symbol
-    }
-    token1 {
-      id
       name
-      symbol
     }
   }
 }
@@ -90,10 +89,7 @@ function containsHtmlOrMarkdown(text: string): boolean {
   return false;
 }
 
-async function fetchData(
-  subgraphUrl: string,
-  lastTimestamp: number
-): Promise<Pool[]> {
+async function fetchData(subgraphUrl: string, lastTimestamp: bigint): Promise<Pool[]> {
   const response = await fetch(subgraphUrl, {
     method: "POST",
     headers,
@@ -115,131 +111,57 @@ async function fetchData(
     throw new Error("GraphQL errors occurred: see logs for details.");
   }
 
-  if (!result.data || !result.data.pools) {
+  if (!result.data || !result.data.liquidityPools) {
     throw new Error("No pools data found.");
   }
 
-  return result.data.pools;
-}
-
-function prepareUrl(chainId: string, apiKey: string): string {
-  const urls = SUBGRAPH_URLS[chainId];
-  if (!urls || isNaN(Number(chainId))) {
-    const supportedChainIds = Object.keys(SUBGRAPH_URLS).join(", ");
-
-    throw new Error(
-      `Unsupported or invalid Chain ID provided: ${chainId}. Only the following values are accepted: ${supportedChainIds}`
-    );
-  }
-  return urls.decentralized.replace("[api-key]", encodeURIComponent(apiKey));
-}
-
-function truncateString(text: string, maxLength: number) {
-  if (text.length > maxLength) {
-    return text.substring(0, maxLength - 3) + "..."; // Subtract 3 for the ellipsis
-  }
-  return text;
-}
-
-// Local helper function used by returnTags
-interface Token {
-  id: string;
-  name: string;
-  symbol: string;
-}
-
-interface Pool {
-  id: string;
-  createdAtTimestamp: number;
-  token0: Token;
-  token1: Token;
+  return result.data.liquidityPools;
 }
 
 function transformPoolsToTags(chainId: string, pools: Pool[]): ContractTag[] {
-  // First, filter and log invalid entries
-  const validPools: Pool[] = [];
-  const rejectedNames: string[] = [];
-
-  pools.forEach((pool) => {
-    const token0Invalid =
-      containsHtmlOrMarkdown(pool.token0.name) ||
-      containsHtmlOrMarkdown(pool.token0.symbol);
-    const token1Invalid =
-      containsHtmlOrMarkdown(pool.token1.name) ||
-      containsHtmlOrMarkdown(pool.token1.symbol);
-
-    if (token0Invalid || token1Invalid) {
-      if (token0Invalid) {
-        rejectedNames.push(
-          pool.token0.name + ", Symbol: " + pool.token0.symbol
-        );
-      }
-      if (token1Invalid) {
-        rejectedNames.push(
-          pool.token1.name + ", Symbol: " + pool.token1.symbol
-        );
-      }
-    } else {
-      validPools.push(pool);
-    }
-  });
-
-  // Log all rejected names
-  if (rejectedNames.length > 0) {
-    console.log(
-      "Rejected token names due to HTML/Markdown content:",
-      rejectedNames
-    );
-  }
-
-  // Process valid pools into tags
-  return validPools.map((pool) => {
-    const maxSymbolsLength = 45;
-    const symbolsText = `${pool.token0.symbol}/${pool.token1.symbol}`;
-    const truncatedSymbolsText = truncateString(symbolsText, maxSymbolsLength);
+  return pools.map((pool) => {
+    const symbols = pool.inputTokens.map((t) => t.symbol).sort();
+    const publicNameTag = pool.name;
+    const publicNote = `A Uniswap V3 pool with tokens ${symbols.join(", ")}.`;
 
     return {
       "Contract Address": `eip155:${chainId}:${pool.id}`,
-      "Public Name Tag": `${truncatedSymbolsText} Pool`,
+      "Public Name Tag": publicNameTag,
       "Project Name": "Uniswap v3",
-      "UI/Website Link": "https://uniswap.org",
-      "Public Note": `The liquidity pool contract on Uniswap v3 for the ${pool.token0.name} (${pool.token0.symbol}) / ${pool.token1.name} (${pool.token1.symbol}) pair.`,
+      "UI/Website Link": `https://info.uniswap.org/#/arbitrum/pools/${pool.id}`,
+      "Public Note": publicNote,
     };
   });
 }
 
-//The main logic for this module
 class TagService implements ITagService {
-  // Using an arrow function for returnTags
-  returnTags = async (
-    chainId: string,
-    apiKey: string
-  ): Promise<ContractTag[]> => {
-    let lastTimestamp: number = 0;
+  returnTags = async (chainId: string, apiKey: string): Promise<ContractTag[]> => {
+    if (chainId !== "42161") {
+      throw new Error(`Unsupported Chain ID: ${chainId}.`);
+    }
+
+    const subgraphUrl = SUBGRAPH_URL_TEMPLATE.replace("[api-key]", apiKey);
+
+    let lastTimestamp: bigint = BigInt(0);
     let allTags: ContractTag[] = [];
     let isMore = true;
 
-    const url = prepareUrl(chainId, apiKey);
-
     while (isMore) {
       try {
-        const pools = await fetchData(url, lastTimestamp);
+        const pools = await fetchData(subgraphUrl, lastTimestamp);
         allTags.push(...transformPoolsToTags(chainId, pools));
 
         isMore = pools.length === 1000;
         if (isMore) {
-          lastTimestamp = parseInt(
-            pools[pools.length - 1].createdAtTimestamp.toString(),
-            10
-          );
+          lastTimestamp = BigInt(pools[pools.length - 1].createdTimestamp);
         }
       } catch (error) {
         if (isError(error)) {
           console.error(`An error occurred: ${error.message}`);
-          throw new Error(`Failed fetching data: ${error}`); // Propagate a new error with more context
+          throw new Error(`Failed fetching data: ${error.message}`);
         } else {
           console.error("An unknown error occurred.");
-          throw new Error("An unknown error occurred during fetch operation."); // Throw with a generic error message if the error type is unknown
+          throw new Error("An unknown error occurred during fetch operation.");
         }
       }
     }
@@ -247,8 +169,6 @@ class TagService implements ITagService {
   };
 }
 
-// Creating an instance of TagService
 const tagService = new TagService();
 
-// Exporting the returnTags method directly
 export const returnTags = tagService.returnTags;
